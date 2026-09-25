@@ -11,3 +11,5 @@ face-recognition-5pt/wheels/
 face-recognition-5pt/report.json
 *.jpg
 
+config.bat
+node_modules
