@@ -48,6 +48,8 @@ import paho.mqtt.client as mqtt
 from .haar_5pt import align_face_5pt, Haar5ptDetector
 from .cam_config import get_cam_index
 
+HaarFaceMesh5pt = Haar5ptDetector
+
 
 # ============================================================
 # PATHS
@@ -289,13 +291,15 @@ class ServoController:
         print("[MQTT] -> ESP: HOME")
         self.client.publish(TOPIC_SERVO_CMD, "HOME")
 
-    def publish_recognition(self, name, distance, similarity, angle, attempt):
+    def publish_recognition(self, name, distance, similarity, angle, attempt, is_smiling: bool = False, is_blinking: bool = False):
         payload = {
             "name": name,
             "distance": float(distance),
             "similarity": float(similarity),
             "angle": int(angle),
-            "attempt": int(attempt)
+            "attempt": int(attempt),
+            "smiling": bool(is_smiling),
+            "blinking": bool(is_blinking)
         }
         self.client.publish(TOPIC_RECOGNITION, json.dumps(payload))
 
@@ -349,7 +353,21 @@ def draw_faces(frame, faces):
         cv2.rectangle(vis, (face.x1, face.y1), (face.x2, face.y2), (0, 255, 0), 2)
 
         for x, y in face.kps.astype(int):
-            cv2.circle(vis, (int(x), int(y)), 3, (0, 255, 0), -1)
+            cv2.circle(vis, (int(x), int(y)), 3, (0, 255, 255), -1)
+
+        smile_txt = f"Smile: {'YES' if face.is_smiling else 'NO'} ({face.smile_score:.2f})"
+        blink_txt = f"Blink: {'YES' if face.is_blinking else 'NO'} ({face.blink_score:.2f})"
+
+        smile_color = (0, 255, 0) if face.is_smiling else (180, 180, 180)
+        blink_color = (0, 215, 255) if face.is_blinking else (180, 180, 180)
+
+        y_top = max(20, face.y1 - 10)
+        cv2.putText(vis, smile_txt, (face.x1, y_top), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(vis, smile_txt, (face.x1, y_top), cv2.FONT_HERSHEY_SIMPLEX, 0.55, smile_color, 1, cv2.LINE_AA)
+
+        y_bot = min(vis.shape[0] - 10, face.y2 + 20)
+        cv2.putText(vis, blink_txt, (face.x1, y_bot), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(vis, blink_txt, (face.x1, y_bot), cv2.FONT_HERSHEY_SIMPLEX, 0.55, blink_color, 1, cv2.LINE_AA)
 
     return vis
 
@@ -425,12 +443,15 @@ def run_one_sweep(cap, detector, embedder, matcher, servo) -> Tuple[Optional[str
 
                 servo.stop()
 
+                best_face = faces[0] if faces else None
                 servo.publish_recognition(
                     name=result.name,
                     distance=result.distance,
                     similarity=result.similarity,
                     angle=angle,
-                    attempt=attempt
+                    attempt=attempt,
+                    is_smiling=best_face.is_smiling if best_face else False,
+                    is_blinking=best_face.is_blinking if best_face else False,
                 )
 
                 return result.name, False
@@ -445,12 +466,15 @@ def run_one_sweep(cap, detector, embedder, matcher, servo) -> Tuple[Optional[str
                         f"(dist={result.distance:.3f})"
                     )
 
+                    best_face = faces[0] if faces else None
                     servo.publish_recognition(
                         name="Stranger",
                         distance=result.distance,
                         similarity=result.similarity,
                         angle=angle,
-                        attempt=attempt
+                        attempt=attempt,
+                        is_smiling=best_face.is_smiling if best_face else False,
+                        is_blinking=best_face.is_blinking if best_face else False,
                     )
 
                     stranger_announced = True

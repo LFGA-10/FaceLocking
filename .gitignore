@@ -1,4 +1,4 @@
-﻿face-recognition-5pt/.venv/
+face-recognition-5pt/.venv/
 **/__pycache__/
 *.pyc
 face-recognition-5pt/data/db/
@@ -6,3 +6,8 @@ face-recognition-5pt/data/enroll/
 face-recognition-5pt/data/debug_aligned/
 face-recognition-5pt/models/*.onnx
 face-recognition-5pt/models/*.task
+face-recognition-5pt/wheels/
+*.whl
+face-recognition-5pt/report.json
+*.jpg
+

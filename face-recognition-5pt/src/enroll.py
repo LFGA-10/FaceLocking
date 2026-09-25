@@ -136,7 +136,7 @@ def main():
     auto = False
     last_auto = 0.0
 
-    cap = cv2.VideoCapture(get_cam_index())
+    cap = cv2.VideoCapture(get_cam_index(), cv2.CAP_DSHOW)
     if not cap.isOpened():
         raise RuntimeError("Failed to open camera.")
 

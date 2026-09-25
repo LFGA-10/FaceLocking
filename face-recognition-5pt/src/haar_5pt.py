@@ -28,6 +28,12 @@ class FaceKpsBox:
     y2: int
     score: float
     kps: np.ndarray  # (5,2) float32
+    smile_score: float = 0.0
+    is_smiling: bool = False
+    blink_score: float = 0.0
+    is_blinking: bool = False
+    left_blink: float = 0.0
+    right_blink: float = 0.0
 
 
 def _estimate_norm_5pt(kps_5x2: np.ndarray, out_size: Tuple[int, int] = (112, 112)) -> np.ndarray:
@@ -157,6 +163,7 @@ class Haar5ptDetector:
             base_options=base_options,
             running_mode=mp_vision.RunningMode.VIDEO,
             num_faces=1,
+            output_face_blendshapes=True,
             min_face_detection_confidence=0.5,
             min_face_presence_confidence=0.5,
             min_tracking_confidence=0.5,
@@ -185,7 +192,7 @@ class Haar5ptDetector:
             return np.zeros((0, 4), dtype=np.int32)
         return faces.astype(np.int32)
 
-    def _facemesh_5pt(self, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
+    def _facemesh_5pt(self, frame_bgr: np.ndarray) -> Tuple[Optional[np.ndarray], Dict[str, float]]:
         H, W = frame_bgr.shape[:2]
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -194,7 +201,7 @@ class Haar5ptDetector:
         result = self.landmarker.detect_for_video(mp_image, self._ts_ms)
 
         if not result.face_landmarks:
-            return None
+            return None, {}
 
         lm = result.face_landmarks[0]
         idxs = [
@@ -216,7 +223,11 @@ class Haar5ptDetector:
         if kps[3, 0] > kps[4, 0]:
             kps[[3, 4]] = kps[[4, 3]]
 
-        return kps
+        shapes: Dict[str, float] = {}
+        if result.face_blendshapes:
+            shapes = {cat.category_name: float(cat.score) for cat in result.face_blendshapes[0]}
+
+        return kps, shapes
 
     def detect(self, frame_bgr: np.ndarray, max_faces: int = 1) -> List[FaceKpsBox]:
         H, W = frame_bgr.shape[:2]
@@ -230,7 +241,7 @@ class Haar5ptDetector:
         i = int(np.argmax(areas))
         x, y, w, h = faces[i].tolist()
 
-        kps = self._facemesh_5pt(frame_bgr)
+        kps, shapes = self._facemesh_5pt(frame_bgr)
         if kps is None:
             if self.debug:
                 print("[haar_5pt] Haar face found but FaceLandmarker returned none -> reject")
@@ -272,6 +283,17 @@ class Haar5ptDetector:
         x1, y1, x2, y2 = box_s.tolist()
         score = 1.0
 
+        # Smile & blink classification
+        l_smile = shapes.get("mouthSmileLeft", 0.0)
+        r_smile = shapes.get("mouthSmileRight", 0.0)
+        smile_score = float((l_smile + r_smile) / 2.0)
+        is_smiling = smile_score >= 0.45
+
+        l_blink = shapes.get("eyeBlinkLeft", 0.0)
+        r_blink = shapes.get("eyeBlinkRight", 0.0)
+        blink_score = float(max(l_blink, r_blink))
+        is_blinking = blink_score >= 0.45
+
         return [
             FaceKpsBox(
                 x1=int(round(x1)),
@@ -280,6 +302,12 @@ class Haar5ptDetector:
                 y2=int(round(y2)),
                 score=float(score),
                 kps=kps_s.astype(np.float32),
+                smile_score=smile_score,
+                is_smiling=is_smiling,
+                blink_score=blink_score,
+                is_blinking=is_blinking,
+                left_blink=float(l_blink),
+                right_blink=float(r_blink),
             )
         ][:max_faces]
 
