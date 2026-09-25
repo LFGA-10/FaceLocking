@@ -30,10 +30,17 @@ class FaceKpsBox:
     kps: np.ndarray  # (5,2) float32
     smile_score: float = 0.0
     is_smiling: bool = False
+    frown_score: float = 0.0
+    is_frowning: bool = False
+    sad_score: float = 0.0
+    is_sad: bool = False
     blink_score: float = 0.0
     is_blinking: bool = False
     left_blink: float = 0.0
     right_blink: float = 0.0
+    grimace_score: float = 0.0
+    is_grimacing: bool = False
+
 
 
 def _estimate_norm_5pt(kps_5x2: np.ndarray, out_size: Tuple[int, int] = (112, 112)) -> np.ndarray:
@@ -283,16 +290,36 @@ class Haar5ptDetector:
         x1, y1, x2, y2 = box_s.tolist()
         score = 1.0
 
-        # Smile & blink classification
+        # Expression & Action classification
         l_smile = shapes.get("mouthSmileLeft", 0.0)
         r_smile = shapes.get("mouthSmileRight", 0.0)
         smile_score = float((l_smile + r_smile) / 2.0)
-        is_smiling = smile_score >= 0.45
+        is_smiling = smile_score >= 0.40
 
         l_blink = shapes.get("eyeBlinkLeft", 0.0)
         r_blink = shapes.get("eyeBlinkRight", 0.0)
         blink_score = float(max(l_blink, r_blink))
         is_blinking = blink_score >= 0.45
+
+        l_frown = shapes.get("browDownLeft", 0.0)
+        r_frown = shapes.get("browDownRight", 0.0)
+        frown_score = float((l_frown + r_frown) / 2.0)
+        is_frowning = frown_score >= 0.35
+
+        l_sad = shapes.get("mouthFrownLeft", 0.0)
+        r_sad = shapes.get("mouthFrownRight", 0.0)
+        brow_inner = shapes.get("browInnerUp", 0.0)
+        sad_score = float((l_sad + r_sad) / 2.0 * 0.7 + brow_inner * 0.3)
+        is_sad = sad_score >= 0.30
+
+        m_stretch_l = shapes.get("mouthStretchLeft", 0.0)
+        m_stretch_r = shapes.get("mouthStretchRight", 0.0)
+        m_press_l = shapes.get("mouthPressLeft", 0.0)
+        m_press_r = shapes.get("mouthPressRight", 0.0)
+        m_pucker = shapes.get("mouthPucker", 0.0)
+        jaw_open = shapes.get("jawOpen", 0.0)
+        grimace_score = float(max((m_stretch_l + m_stretch_r) / 2.0, (m_press_l + m_press_r) / 2.0, m_pucker * 0.8, jaw_open * 0.8))
+        is_grimacing = grimace_score >= 0.35 and not is_smiling
 
         return [
             FaceKpsBox(
@@ -304,10 +331,16 @@ class Haar5ptDetector:
                 kps=kps_s.astype(np.float32),
                 smile_score=smile_score,
                 is_smiling=is_smiling,
+                frown_score=frown_score,
+                is_frowning=is_frowning,
+                sad_score=sad_score,
+                is_sad=is_sad,
                 blink_score=blink_score,
                 is_blinking=is_blinking,
                 left_blink=float(l_blink),
                 right_blink=float(r_blink),
+                grimace_score=grimace_score,
+                is_grimacing=is_grimacing,
             )
         ][:max_faces]
 
